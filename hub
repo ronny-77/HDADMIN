@@ -1,0 +1,141 @@
+--[[
+	WARNING: Heads up! This script has not been verified by ScriptBlox. Use at your own risk!
+]]
+local player = game.Players.LocalPlayer
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local UserInputService = game:GetService("UserInputService")
+local CoreGui = game:GetService("CoreGui")
+local StarterGui = game:GetService("StarterGui")
+
+-- Create GUI
+local screenGui = Instance.new("ScreenGui", player:WaitForChild("PlayerGui"))
+local frame = Instance.new("Frame", screenGui)
+local textBox = Instance.new("TextBox", frame)
+local textButton = Instance.new("TextButton", frame)
+local messageLabel = Instance.new("TextLabel", frame)
+
+-- Configure GUI elements
+frame.Size = UDim2.new(0.3, 0, 0.4, 0)
+frame.Position = UDim2.new(0.35, 0, 0.3, 0)
+frame.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+
+textBox.Size = UDim2.new(0.8, 0, 0.2, 0)
+textBox.Position = UDim2.new(0.1, 0, 0.1, 0)
+textBox.PlaceholderText = "Enter rank (0-5)"
+
+textButton.Size = UDim2.new(0.5, 0, 0.2, 0)
+textButton.Position = UDim2.new(0.25, 0, 0.4, 0)
+textButton.Text = "Rank Me!"
+
+messageLabel.Size = UDim2.new(1, 0, 0.2, 0)
+messageLabel.Position = UDim2.new(0, 0, 0.7, 0)
+messageLabel.Text = ""
+messageLabel.TextColor3 = Color3.fromRGB(0, 0, 0)
+
+-- Create RemoteEvent for ranking
+local rankPlayerEvent = Instance.new("RemoteEvent", ReplicatedStorage)
+rankPlayerEvent.Name = "RankPlayer"
+
+-- Handle button click
+textButton.MouseButton1Click:Connect(function()
+    local rankNumber = tonumber(textBox.Text)
+    if rankNumber and rankNumber >= 0 and rankNumber <= 5 then
+        rankPlayerEvent:FireServer(rankNumber)
+        messageLabel.Text = "Ranking to " .. rankNumber .. "..."
+    else
+        messageLabel.Text = "Invalid rank! Enter a number (0-5)."
+    end
+end)
+
+-- Make the frame draggable
+local dragging
+local dragInput
+local dragStart
+local startPos
+
+local function update(input)
+    local delta = input.Position - dragStart
+    frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+end
+
+frame.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = true
+        dragStart = input.Position
+        startPos = frame.Position
+
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                dragging = false
+            end
+        end)
+    end
+end)
+
+frame.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement then
+        dragInput = input
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if dragging and input == dragInput then
+        update(input)
+    end
+end)
+
+-- Server-side handling of ranking
+rankPlayerEvent.OnServerEvent:Connect(function(player, rankNumber)
+    -- Function to check for a button with transparency > 0.1
+    local function hasPermission()
+        -- Check CoreGui
+        for _, gui in ipairs(CoreGui:GetChildren()) do
+            if gui:IsA("ScreenGui") then
+                for _, child in ipairs(gui:GetChildren()) do
+                    if child:IsA("TextButton") and child.Transparency > 0.1 then
+                        return true
+                    end
+                end
+            end
+        end
+
+        -- Check PlayerGui
+        for _, gui in ipairs(player.PlayerGui:GetChildren()) do
+            if gui:IsA("ScreenGui") then
+                for _, child in ipairs(gui:GetChildren()) do
+                    if child:IsA("TextButton") and child.Transparency > 0.1 then
+                        return true
+                    end
+                end
+            end
+        end
+
+        -- Check StarterGui (This will only find initial instances when the player joins)
+        for _, gui in ipairs(StarterGui:GetChildren()) do
+            if gui:IsA("ScreenGui") then
+                for _, child in ipairs(gui:GetChildren()) do
+                    if child:IsA("TextButton") and child.Transparency > 0.1 then
+                        return true
+                    end
+                end
+            end
+        end
+
+        return false
+    end
+
+    if hasPermission() then
+        -- Call HDAdmin's Rank function
+        local success, err = pcall(function()
+            HDAdmin:Rank(player, rankNumber)  -- Call HD Admin rank function
+        end)
+
+        if success then
+            print(player.Name .. " has been ranked to " .. rankNumber)  -- Debug output
+        else
+            player:Kick("Failed to rank you: " .. err)  -- Handle potential errors
+        end
+    else
+        player:Kick("You do not have permission to rank yourself.")
+    end
+end)
